@@ -1,80 +1,64 @@
+#!/usr/bin/env python
+
 import numpy as np
 import copy
 import time
 
 from collections import defaultdict
 
-from debug_logger import *
+from debug_logger import setupLogging
+import logging
 from visuals import gridWorld
-from common import state, action
+from common import state, action, mdp
 
-# TODO: visuals to plot trajectory
+setupLogging()
+logger = logging.getLogger(__name__)
+
+
+logger.info('Start main program')
+
 # TODO: clean up code so that there isn't so much outside functions
-# TODO: be careful about moving GOAL_X and GOAL_Y since they are now part of initializePolicy()
-# TODO: should initializePolicy take in goal state?
-
-
 
 # dimensions of the grid world
 L = 6
 W = 6
 NUM_HEADINGS = 12
 
-# pre-rotation error probability
-error_probability = 0.0
-gamma = 0.9
-
-V_TOLERANCE = 1e-3
-MAX_ITERATIONS = 100
-
 # create constant rewards matrix based on problem
 # matrix organized relative to coordinate system
-# ie. to access reward given for x = 3, y = 2 => REWARD_MATRIX[3,2]
-REWARD_MATRIX = np.zeros((W,L,NUM_HEADINGS))
-REWARD_MATRIX[:,0,:] = -100
-REWARD_MATRIX[:,-1,:] = -100
-REWARD_MATRIX[0,:,:] = -100
-REWARD_MATRIX[-1,:,:] = -100
-REWARD_MATRIX[2,2:5,:] = -10
-REWARD_MATRIX[4,2:5,:] = -10
-REWARD_MATRIX[3,4,5:8] = 1
+# ie. to access reward given for x = 3, y = 2 => reward_matrix[3,2]
+def createRewardMatrix(L, W, num_headings):
 
-REWARD_MATRIX_DISPLAY = np.zeros((W,L))
-REWARD_MATRIX_DISPLAY[:,0] = -2
-REWARD_MATRIX_DISPLAY[:,-1] = -2
-REWARD_MATRIX_DISPLAY[0,:] = -2
-REWARD_MATRIX_DISPLAY[-1,:] = -2
-REWARD_MATRIX_DISPLAY[2:5,2] = -1
-REWARD_MATRIX_DISPLAY[2:5,4] = -1
-REWARD_MATRIX_DISPLAY[4,3] = 1
+    reward_matrix = np.zeros((W,L,NUM_HEADINGS))
+    reward_matrix[:,0,:] = -100
+    reward_matrix[:,-1,:] = -100
+    reward_matrix[0,:,:] = -100
+    reward_matrix[-1,:,:] = -100
+    reward_matrix[2,2:5,:] = -10
+    reward_matrix[4,2:5,:] = -10
+    reward_matrix[3,4,5:8] = 1
 
+    # reward_matrix[3,4,0:2] = 1
+    # reward_matrix[3,4,-1] = 1
+    return reward_matrix
 
-# create lists of all possible position and heading values
-x_values = np.arange(0,L)
-y_values = np.arange(0,W)
-heading_values = np.arange(0,NUM_HEADINGS)
+def createDisplayRewardMatrix(L, W, num_headings):
+    display_reward_matrix = np.zeros((W,L))
+    display_reward_matrix[:,0] = -2
+    display_reward_matrix[:,-1] = -2
+    display_reward_matrix[0,:] = -2
+    display_reward_matrix[-1,:] = -2
+    display_reward_matrix[2:5,2] = -1
+    display_reward_matrix[2:5,4] = -1
+    display_reward_matrix[4,3] = 1
 
-# size of the state space
-Ns = L*W*NUM_HEADINGS
-
-# create state space by pulling each combination of x, y, and heading values 
-S = {state(x,y,heading) for x in x_values for y in y_values for heading in heading_values}
+    return display_reward_matrix
 
 # create set of all actions
 VECTOR_TOLERANCE = 0.001
 
-A = set()
-A.add(action('forwards',None,np.array([[0], [1]])))
-A.add(action('forwards','right',np.array([[0.5], [np.sqrt(3)/2]])))
-A.add(action('forwards','left',np.array([[-0.5], [np.sqrt(3)/2]])))
-A.add(action('backwards',None,np.array([[0], [-1]])))
-A.add(action('backwards','right',np.array([[0.5-VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
-A.add(action('backwards','left',np.array([[-0.5+VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
-A.add(action('stay',None,np.array([[0], [0]])))
-
-
 # given a state and an action, return a new state based on the grid
-def tryToMove(s,a):
+def runDynamics(s,a):
     # shallow copy to base calculations on without disturbing original state
     new_state = copy.copy(s)
 
@@ -121,57 +105,35 @@ def tryToMove(s,a):
     return new_state
 
 
-TRANSITION_PROBABILITY_TABLE = {}
-for s in S:
-    for a in A:
-        TRANSITION_PROBABILITY_TABLE[(s,a)] = {}
+def createTransitionProbabilityTable(S,A,error_probability):
+    transition_probability_dict = {}
+    for s in S:
+        for a in A:
+            transition_probability_dict[(s,a)] = {}
 
-        if a.movement == 'stay':
-            new_s = s
-            TRANSITION_PROBABILITY_TABLE[(s,a)][new_s] = 1
-        elif a.movement == 'forwards' or a.movement == 'backwards':
-            left_rotated_s = copy.copy(s)
-            right_rotated_s = copy.copy(s)
-            left_rotated_s.heading = (left_rotated_s.heading - 1) % NUM_HEADINGS
-            right_rotated_s.heading = (right_rotated_s.heading + 1) % NUM_HEADINGS
+            if a.movement == 'stay':
+                s_p = s
+                transition_probability_dict[(s,a)][s_p] = 1
+            elif a.movement == 'forwards' or a.movement == 'backwards':
+                left_rotated_s = copy.copy(s)
+                right_rotated_s = copy.copy(s)
+                left_rotated_s.heading = (left_rotated_s.heading - 1) % NUM_HEADINGS
+                right_rotated_s.heading = (right_rotated_s.heading + 1) % NUM_HEADINGS
 
-            new_s = tryToMove(s,a)
-            left_rotated_new_s = tryToMove(left_rotated_s,a)
-            right_rotated_new_s = tryToMove(right_rotated_s,a)                
+                s_p = runDynamics(s,a)
+                left_rotated_s_p = runDynamics(left_rotated_s,a)
+                right_rotated_s_p = runDynamics(right_rotated_s,a)                
 
-            TRANSITION_PROBABILITY_TABLE[(s,a)][left_rotated_new_s] = error_probability
-            TRANSITION_PROBABILITY_TABLE[(s,a)][right_rotated_new_s] = error_probability
-            TRANSITION_PROBABILITY_TABLE[(s,a)][new_s] = 1 - 2*error_probability
+                transition_probability_dict[(s,a)][left_rotated_s_p] = error_probability
+                transition_probability_dict[(s,a)][right_rotated_s_p] = error_probability
+                transition_probability_dict[(s,a)][s_p] = 1 - 2*error_probability
 
-        else:
-            logger.error('The action is not supported.')
-
-
-def transitionProbability(error_probability, s, a, new_s):
-    ''' This function finds the probability for the robot to transition from a state
-    to a new state through a specified action. '''
-    return TRANSITION_PROBABILITY_TABLE[(s,a)][new_s]
+            else:
+                logger.error('The action is not supported.')
+    return transition_probability_dict
 
 
-def findNewState(s, a):
-    possible_new_states = TRANSITION_PROBABILITY_TABLE[(s,a)].keys()
-    possible_probabilities = TRANSITION_PROBABILITY_TABLE[(s,a)].values()
-    thresholds = np.insert(np.cumsum(possible_probabilities),0,0)
-    random_value = np.random.rand()
-
-    for k in range(len(thresholds)-1):
-        if random_value > thresholds[k] and random_value < thresholds[k+1]:
-            return possible_new_states[k]
-
-
-def returnReward(state):
-    # TODO: Set up a way to easily switch between modified reward function that is heading dependent
-    return REWARD_MATRIX[state.x,state.y,state.heading]
-
-
-
-
-def initializePolicy(goal_state):
+def initializePolicy(S, A, goal_state):
     pi = {}
     for s in S:
         if s.heading >= 2 and s.heading  <= 4:
@@ -205,6 +167,38 @@ def initializePolicy(goal_state):
 
     return pi
 
+def rewardFunctionNonHeadingDependent(reward_matrix, s):
+    return np.max(reward_matrix[s.x,s.y,:])
+
+def rewardFunctionHeadingDependent(reward_matrix, s):
+    return reward_matrix[s.x,s.y,s.heading]
+
+
+# pre-rotation error probability
+error_probability = 0.0
+gamma = 0.9
+
+# create lists of all possible position and heading values
+x_values = np.arange(0,L)
+y_values = np.arange(0,W)
+heading_values = np.arange(0,NUM_HEADINGS)
+
+# size of the state space
+Ns = L*W*NUM_HEADINGS
+
+# create state space by pulling each combination of x, y, and heading values 
+S = {state(x,y,heading) for x in x_values for y in y_values for heading in heading_values}
+
+
+
+A = set()
+A.add(action('forwards',None,np.array([[0], [1]])))
+A.add(action('forwards','right',np.array([[0.5], [np.sqrt(3)/2]])))
+A.add(action('forwards','left',np.array([[-0.5], [np.sqrt(3)/2]])))
+A.add(action('backwards',None,np.array([[0], [-1]])))
+A.add(action('backwards','right',np.array([[0.5-VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
+A.add(action('backwards','left',np.array([[-0.5+VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
+A.add(action('stay',None,np.array([[0], [0]])))
 
 title = '6 x 6 Grid World'
 
@@ -217,113 +211,32 @@ START_HEAD = 6
 
 POSSIBLE_GOAL_STATES = {state(GOAL_X, GOAL_Y, heading) for heading in heading_values}
 
-goal_state = state(3,4,0)
-start_state = state(1,4,6)
-grid_world = gridWorld(title, REWARD_MATRIX_DISPLAY, goal_state)
-grid_world.setStartState(start_state)
+reward_matrix = createRewardMatrix(L, W, NUM_HEADINGS)
+display_reward_matrix = createDisplayRewardMatrix(L, W, NUM_HEADINGS)
 
-def runSimulation(grid_world, policy, start_state):
-    current_state = start_state
+goal_state = state(GOAL_X,GOAL_Y,0)
+start_state = state(START_X,START_Y,START_HEAD)
+grid_world = gridWorld(title, display_reward_matrix, POSSIBLE_GOAL_STATES)
 
-    while not (current_state in POSSIBLE_GOAL_STATES):
-        current_action = policy[current_state]
-        new_state = findNewState(current_state, current_action)
-        grid_world.updateState(new_state)
-        current_state = new_state
+transition_probability_dict = createTransitionProbabilityTable(S, A, error_probability)
 
+initial_policy = initializePolicy(S, A, goal_state)
 
-
-def runPolicyEvaluation(policy):
-    V = defaultdict(lambda: 0, {})
-    V_old = copy.copy(V)
-
-    iterations = 0
-    value_changed = True
-
-    while value_changed:
-        value_changed = False
-        for s in S:
-            a = policy[s]
-            possible_new_states = TRANSITION_PROBABILITY_TABLE[(s,a)].keys()
-
-            v_sum = 0
-            for s_p in possible_new_states:
-                v_sum = v_sum + TRANSITION_PROBABILITY_TABLE[(s,a)][s_p]*(returnReward(s) + gamma*V_old[s_p])
-            
-            if np.abs(V[s] - v_sum) > V_TOLERANCE:
-                value_changed = True
-
-            V[s] = v_sum
-
-        iterations += 1
-        V_old = copy.copy(V)
-
-    return V
-
-def runPolicyIteration():
-    start_time = time.time()
-
-    iterations = 0
-
-    f = lambda fs, fa, fs_p : TRANSITION_PROBABILITY_TABLE[(fs,fa)][fs_p]*V[fs_p]
-
-    last_policy = None
-    policy = initializePolicy(state(GOAL_X,GOAL_Y,0))
-    while not (policy == last_policy) and iterations < MAX_ITERATIONS:
-        last_policy = copy.copy(policy)
-        iterations += 1
-        V = runPolicyEvaluation(policy)
-        for s in S:
-            _, policy[s] = maximizeFunctionOverActions(f,s)
-
-    run_time = time.time() - start_time
-    return policy
+reward_function = lambda s: rewardFunctionNonHeadingDependent(reward_matrix, s)
+mdp_reward_heading_independent = mdp(S, A, transition_probability_dict, reward_function, gamma)
 
 
+policy_iteration_policy, policy_iteration_value = mdp_reward_heading_independent.runPolicyIteration(initial_policy)
+value_iteration_policy, value_iteration_value = mdp_reward_heading_independent.runValueIteration(initial_policy)
 
-def runValueIteration():
-    start_time = time.time()
+getNewState = lambda s, a: mdp_reward_heading_independent.getNewState(s,a)
 
-    V = defaultdict(lambda: 0, {})
-    V_old = copy.copy(V)
+grid_world.runSimulation(getNewState, policy_iteration_policy, start_state, 'policy_iteration')
 
-    value_changed = True
-    iterations = 0
+raw_input('Press Enter to continue')
 
-    f = lambda fs, fa, fs_p : TRANSITION_PROBABILITY_TABLE[(fs,fa)][fs_p]*(returnReward(fs) + gamma*V_old[fs_p])
+grid_world.runSimulation(getNewState, value_iteration_policy, start_state, 'value_iteration')
 
-
-    policy = initializePolicy(state(GOAL_X,GOAL_Y,0))
-    while value_changed and iterations < MAX_ITERATIONS:
-        value_changed = False
-        iterations += 1
-
-        for s in S:
-            V[s], policy[s] = maximizeFunctionOverActions(f, s)
-
-            if np.abs(V[s] - V_old[s]) > V_TOLERANCE:
-                value_changed = True
-
-        V_old = copy.copy(V)
-
-    run_time = time.time() - start_time
-    return policy
-
-
-def maximizeFunctionOverActions(f, s):
-    max_f_value = -1e10
-    for a in A:
-        f_value = 0
-        possible_new_states = TRANSITION_PROBABILITY_TABLE[(s,a)].keys()
-        for s_p in possible_new_states:
-            f_value += f(s, a, s_p)
-
-        if f_value > max_f_value:
-            max_f_value = f_value
-            max_action = a
-
-    return max_f_value, max_action
-
-p = runPolicyIteration()
-
-runSimulation(grid_world, p, start_state)
+raw_input('Press Enter to continue')
+reward_function = lambda s: rewardFunctionHeadingDependent(reward_matrix, s)
+mdp_reward_heading_dependent = mdp(S, A, transition_probability_dict, reward_function, gamma)

@@ -19,18 +19,29 @@
             "class": "logging.handlers.RotatingFileHandler",
             "level": "DEBUG",
             "formatter": "simple",
-            "filename": "debug.log",
+            "filename": "./logs/debug.log",
             "maxBytes": 10485760,
             "backupCount": 20,
-            "encoding": "utf8"
+            "encoding": "utf8",
+            "mode": "a"
         }
     },
 
     "loggers": {
-        "hw2": {
+        "main": {
             "level": "DEBUG",
             "handlers": ["debug_file_handler"],
-            "propagate": "no"
+            "propagate": "yes"
+        },
+        "visuals": {
+            "level": "DEBUG",
+            "handlers": ["debug_file_handler"],
+            "propagate": "yes"
+        },
+        "common": {
+            "level": "DEBUG",
+            "handlers": ["debug_file_handler"],
+            "propagate": "yes"
         }
     },
 
