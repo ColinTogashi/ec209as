@@ -244,46 +244,79 @@ class mdp(object):
         return policy, V
 
     def runValueIteration(self, initial_policy):
+        '''Runs value interation on an initial policy until the value converges and returns the optimal
+        policy and values.
+
+        Arguments:
+            initial_policy - dict of actions: action class listed above. The initial policy can be theoretically
+                initialized using any method.
+        '''
         logger.info('Starting Value Iteration')
         start_time = time.time()
 
+        # initialize a dict with 0 values
+        # Note: defaultdict was used as it allows to call for any state that doesn't currently have
+        # a value. Eventually, all valid keys will fill up with values. This might cause issues as
+        # it returns 0 values for any state that may not be in the state space.
         V = defaultdict(lambda: 0, {})
         V_old = copy.copy(V)
 
+        # initialize counters
         value_changed = True
         iterations = 0
 
+        # create an anonymous function to maximize the sum of the one step lookahead
         f = lambda fs, fa, fs_p : self.getTransitionProbability(fs, fa, fs_p)*(self.getReward(fs) + self.gamma*V_old[fs_p])
 
-
-        # policy = initializePolicy(state(GOAL_X,GOAL_Y,0))
+        # shallow copy so that the initial policy is not affected
         policy = copy.copy(initial_policy)
+        
+        # run until the value hasn't changed
         while value_changed and iterations < self.MAX_ITERATIONS:
             value_changed = False
             iterations += 1
 
+            # run through the state space and find the optimal action that maximizes the value
             for s in self.S:
                 V[s], policy[s] = self.maximizeFunctionOverActions(f, s)
 
+                # check if the values have changed
                 if np.abs(V[s] - V_old[s]) > self.V_TOLERANCE:
                     value_changed = True
 
+            # shallow copy to update for the next iteration
             V_old = copy.copy(V)
 
         run_time = time.time() - start_time
         logger.info('Finishing Value Iteration. Runtime: %6.3f sec' % run_time)
-        return policy
+        return policy, V
 
     def maximizeFunctionOverActions(self, f, s):
-        max_f_value = -1e10
-        for a in self.A:
-            f_value = 0
-            possible_new_states = self.getPossibleNewStates(s,a)
-            for s_p in possible_new_states:
-                f_value += f(s, a, s_p)
+        '''Maximizes the sum of a function over the action space. Utility since there were a number
+        of sums over actions and possible new states. 
 
-            if f_value > max_f_value:
-                max_f_value = f_value
+        Arguments:
+            f - function: specifies the function that is maximized of the action space
+            s - state: state class defined above. Specifies the state that is being considered
+        '''
+
+        # set dummy value to find maximum
+        max_f_value = -1e10
+
+        # search over the action space
+        for a in self.A:
+
+            # get the possible new states
+            possible_new_states = self.getPossibleNewStates(s,a)
+            
+            # compute the sum over the new states
+            f_sum = 0
+            for s_p in possible_new_states:
+                f_sum += f(s, a, s_p)
+
+            # check if this action gives the maximal value
+            if f_sum > max_f_value:
+                max_f_value = f_sum
                 max_action = a
 
         return max_f_value, max_action

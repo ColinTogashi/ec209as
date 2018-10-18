@@ -114,7 +114,21 @@ class gridWorld(object):
         self.ax = ax
         self.possible_goal_states = possible_goal_states
 
+        # reset the starting point
         self.start_marker = None
+
+        # create another plot to show the value of the trajectory
+        fig, ax = plt.subplots()    
+        plt.title('Value at each state')
+        plt.xlabel('State number')
+        plt.ylabel('Value')
+
+        # remove minor ticks
+        plt.minorticks_off()
+
+        # save the value figure variables
+        self.value_fig = fig
+        self.value_ax = ax
 
         # resets key instance variables 
         self.resetVariables()
@@ -133,6 +147,7 @@ class gridWorld(object):
             self.start_marker.remove()
             self.state_arrow.remove()
             self.trajectory_line.remove()
+            self.value_line.remove()
 
             for arrow in self.trajectory_arrows:
                 arrow.remove()
@@ -142,13 +157,14 @@ class gridWorld(object):
         self.trajectory_line = None
         self.start_marker = None
         self.trajectory_arrows = []
+        self.value_line = None
         
         # reset internal variables
         self.state_number = 0
         self.trajectory_x = []
         self.trajectory_y = []
         self.trajectory = []
-        
+        self.trajectory_values = []
 
     def setStartState(self, start_state):
         '''Plot and initialize the starting state
@@ -170,6 +186,9 @@ class gridWorld(object):
         '''
 
         logger.debug('Updating with new state: ' + str(s))
+
+        # change to the grid world figure
+        plt.figure(self.fig.number)
 
         # add points of the trajectory
         self.trajectory_x.append(s.x+0.5)
@@ -209,13 +228,43 @@ class gridWorld(object):
         self.state_number += 1
 
 
-    def runSimulation(self, getNewState, policy, start_state, image_base_name=None, image_format='.pdf'):
+    def updateValue(self, val):
+        '''Update the value on the value figure with each new value
+
+        Arguments:
+            val - float: new value to add to the plot
+        '''
+
+        logger.debug('Updating value')
+
+        # change to the value figure
+        plt.figure(self.value_fig.number)
+
+        # store new values to a list
+        self.trajectory_values.append(val)
+        
+        # create new line if there isn't already one
+        if self.value_line is None:
+            self.value_line, = plt.plot(self.state_number, val, 'r')
+        else:
+            # update the line with new data and resize plot
+            self.value_line.set_data(np.arange(1,self.state_number+1),self.trajectory_values)
+            self.value_ax.set_xticks(np.arange(1,self.state_number+1), minor=False)
+            self.value_ax.relim()
+            self.value_ax.autoscale_view()
+            
+
+    def runSimulation(self, getNewState, policy, value, start_state, image_base_name=None, image_format='.pdf'):
         '''Given a system, policy, and starting state, animates the simulation to the end
 
         Arguments:
             getNewState - function: this function describes how a new state is found in the system
             policy - dict of actions: the given policy must have actions that lead to the goal
+            value - dict of floats: the value function for the specified policy
             start_state - state: state defined in common.py to denote the start point
+            image_base_name - string: the base string that all images of the simulation will have. 
+                The script will only save images if a base name is given.
+            image_format - string: format of the saved images
         '''
 
         logger.info('Starting a new simulation')
@@ -223,14 +272,16 @@ class gridWorld(object):
         # reset instance variables
         self.resetVariables()
 
+        # change the current state
+        current_state = start_state
+        current_value = value[current_state]
+
         # update plot with the starting state
-        self.updateState(start_state)
+        self.updateState(current_state)
+        self.updateValue(current_value)
         if image_base_name is not None:
             image_name = image_base_name + 'Start'
             self.saveFigure(image_name, image_format)
-
-        # change the current state
-        current_state = start_state
 
         # run simulation while the current state is not the goal state
         # TODO: should there also be a condition for bad policies that will never find a way?
@@ -238,27 +289,37 @@ class gridWorld(object):
             # get the current action and find a new state based on the system
             current_action = policy[current_state]
             new_state = getNewState(current_state, current_action)
-
-            # update plot with the new state
+            new_value = value[new_state]
+            
+            # update plots with the new state
             self.updateState(new_state)
+            self.updateValue(new_value)
+
+            # only save image in name is specified
             if image_base_name is not None:
                 image_name = image_base_name + str(self.state_number)
-                self.saveFigure(image_name, image_format)
+                self.saveFigure(self.fig, image_name, image_format)
 
             # update current state
             current_state = new_state
 
+        # plot a the trajectory as a color gradient
         self.plotTrajectoryGradient()
 
         # increment state number to allow saving a new figure
         if image_base_name is not None:
             image_name = image_base_name + 'End'
-            self.saveFigure(image_name, image_format)
+            self.saveFigure(self.fig, image_name, image_format)
+            image_name = image_base_name + 'Value'
+            self.saveFigure(self.value_fig, image_name, image_format)
 
         logger.info('Finishing simluation')
 
+
     def plotTrajectoryGradient(self):
         '''Plots the state trajectory with gradient colors to show time progression'''
+
+        logger.debug('Plotting the trajectory in a gradient color')
 
         # total number of states in the trajectory is the current state number
         num_trajectory_states = self.state_number
@@ -287,12 +348,19 @@ class gridWorld(object):
             self.trajectory_arrows.append(self.ax.arrow(s.x+0.5, s.y+0.5, dx, dy, width=self.ARROW_WIDTH, 
                 facecolor=(gradient_color_set[:,k]), edgeColor=(gradient_color_set[:,k])))
 
-    def saveFigure(self, image_name, image_format):
-        '''Modified saving to allow for filename and format specific names'''
+
+    def saveFigure(self, fig, image_name, image_format):
+        '''Modified saving to allow for filename and format specific names
+
+        Arguments:
+            fig - matplotlib figure: denotes which figure to save
+            image_name - string: full path of the image name to save as
+            image_format - string: type of image to save
+        '''
 
         filename = os.path.join(IMAGE_PATH,image_name+image_format)
         logger.info('Saving image: %s' % filename)
-        self.fig.savefig(filename)
+        fig.savefig(filename)
 
 
 if __name__ == '__main__':
