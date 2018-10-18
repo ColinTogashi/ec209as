@@ -48,9 +48,9 @@ def createRewardMatrix(L, W, num_headings):
     reward_matrix[:,-1,:] = -100
     reward_matrix[0,:,:] = -100
     reward_matrix[-1,:,:] = -100
-    reward_matrix[2,2:5,:] = -10
-    reward_matrix[4,2:5,:] = -10
-    reward_matrix[3,4,5:8] = 1
+    reward_matrix[2,2:5,:] = -6
+    reward_matrix[4,2:5,:] = -6
+    reward_matrix[3,4,5:8] = 25
 
     # reward_matrix[3,4,0:2] = 1
     # reward_matrix[3,4,-1] = 1
@@ -73,7 +73,7 @@ def createDisplayRewardMatrix(L, W, num_headings):
     display_reward_matrix[-1,:] = -100
     display_reward_matrix[2:5,2] = -10
     display_reward_matrix[2:5,4] = -10
-    display_reward_matrix[4,3] = 1
+    display_reward_matrix[4,3] = 10
 
     return display_reward_matrix
 
@@ -250,108 +250,122 @@ def rewardFunctionHeadingDependent(reward_matrix, s):
     '''Computes the reward function that accounts for the heading'''
     return reward_matrix[s.x,s.y,s.heading]
 
+def runProblem(error_probability, gamma, heading_dependent):
+    '''Runs policy iteration and value iteration for each case'''
 
-# pre-rotation error probability
-error_probability = 0.0
-gamma = 0.9
+    # create lists of all possible position and heading values
+    x_values = np.arange(0,L)
+    y_values = np.arange(0,W)
+    heading_values = np.arange(0,NUM_HEADINGS)
+    down_heading_values = np.array([5,6,7])
 
-# create lists of all possible position and heading values
-x_values = np.arange(0,L)
-y_values = np.arange(0,W)
-heading_values = np.arange(0,NUM_HEADINGS)
-down_heading_values = np.array([5,6,7])
+    # size of the state space
+    Ns = L*W*NUM_HEADINGS
 
-# size of the state space
-Ns = L*W*NUM_HEADINGS
+    # create state space by pulling each combination of x, y, and heading values 
+    S = {state(x,y,heading) for x in x_values for y in y_values for heading in heading_values}
 
-# create state space by pulling each combination of x, y, and heading values 
-S = {state(x,y,heading) for x in x_values for y in y_values for heading in heading_values}
+    # create the action space 
+    # action direction vectors are defined where a rotation is a 30 deg turn and forwards is in the positive
+    # y direction
+    # Note: since we must always go forward when the goal is directly to our right, we slightly adjust the
+    # direction vector such that any 90 right or left turns will not align with a backwards movement
+    VECTOR_TOLERANCE = 0.001
 
-# create the action space 
-# action direction vectors are defined where a rotation is a 30 deg turn and forwards is in the positive
-# y direction
-# Note: since we must always go forward when the goal is directly to our right, we slightly adjust the
-# direction vector such that any 90 right or left turns will not align with a backwards movement
-VECTOR_TOLERANCE = 0.001
-
-A = set()
-A.add(action('forwards',None,np.array([[0], [1]])))
-A.add(action('forwards','right',np.array([[0.5], [np.sqrt(3)/2]])))
-A.add(action('forwards','left',np.array([[-0.5], [np.sqrt(3)/2]])))
-A.add(action('backwards',None,np.array([[0], [-1]])))
-A.add(action('backwards','right',np.array([[0.5-VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
-A.add(action('backwards','left',np.array([[-0.5+VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
-A.add(action('stay',None,np.array([[0], [0]])))
+    A = set()
+    A.add(action('forwards',None,np.array([[0], [1]])))
+    A.add(action('forwards','right',np.array([[0.5], [np.sqrt(3)/2]])))
+    A.add(action('forwards','left',np.array([[-0.5], [np.sqrt(3)/2]])))
+    A.add(action('backwards',None,np.array([[0], [-1]])))
+    A.add(action('backwards','right',np.array([[0.5-VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
+    A.add(action('backwards','left',np.array([[-0.5+VECTOR_TOLERANCE], [-np.sqrt(3)/2]])))
+    A.add(action('stay',None,np.array([[0], [0]])))
 
 
-# standard title
-title = '6 x 6 Grid World'
+    # standard title
+    title = '6 x 6 Grid World'
 
-# compute the possible goal states for all heading values
-possible_goal_states = {state(GOAL_X, GOAL_Y, heading) for heading in heading_values}
+    if heading_dependent:
+        # create new possible goal states
+        possible_goal_states = {state(GOAL_X, GOAL_Y, heading) for heading in down_heading_values}
+        # create a reward function to bind to the mdp
+        reward_function = lambda s: rewardFunctionHeadingDependent(reward_matrix, s)
 
-# create a reward matrix for algorithm use and another to display
-reward_matrix = createRewardMatrix(L, W, NUM_HEADINGS)
-display_reward_matrix = createDisplayRewardMatrix(L, W, NUM_HEADINGS)
+        head_string = '_down'
+    else:
+        # compute the possible goal states for all heading values
+        possible_goal_states = {state(GOAL_X, GOAL_Y, heading) for heading in heading_values}
+        # create a reward function to bind to the mdp
+        reward_function = lambda s: rewardFunctionNonHeadingDependent(reward_matrix, s)
 
-# define goal states and start states
-goal_state = state(GOAL_X,GOAL_Y,0)
-start_state = state(START_X,START_Y,START_HEAD)
+        head_string = ''
 
-# define the grid world
-grid_world = gridWorld(title, display_reward_matrix, possible_goal_states)
+    # create a reward matrix for algorithm use and another to display
+    reward_matrix = createRewardMatrix(L, W, NUM_HEADINGS)
+    display_reward_matrix = createDisplayRewardMatrix(L, W, NUM_HEADINGS)
 
-# create the transition probability table
-transition_probability_dict = createTransitionProbabilityTable(S, A, error_probability)
+    # define goal states and start states
+    goal_state = state(GOAL_X,GOAL_Y,0)
+    start_state = state(START_X,START_Y,START_HEAD)
 
-# initialize the policy
-initial_policy = initializePolicy(S, A, goal_state)
+    # define the grid world
+    grid_world = gridWorld(title, display_reward_matrix, possible_goal_states)
 
-# create a reward function to bind to the mdp
-reward_function = lambda s: rewardFunctionNonHeadingDependent(reward_matrix, s)
+    # create the transition probability table
+    transition_probability_dict = createTransitionProbabilityTable(S, A, error_probability)
 
-# make a new mdp
-mdp_reward_heading_independent = mdp(S, A, transition_probability_dict, reward_function, gamma)
+    # initialize the policy
+    initial_policy = initializePolicy(S, A, goal_state)
 
-# map the mdp new state function to the simulation
-getNewState = lambda s, a: mdp_reward_heading_independent.getNewState(s,a)
+    # make a new mdp
+    mdp_problem = mdp(S, A, transition_probability_dict, reward_function, gamma, possible_goal_states)
 
-raw_input('Press Enter to show the initial policy')
+    # map the mdp new state function to the simulation
+    getNewState = lambda s, a: mdp_problem.getNewState(s,a)
 
-initial_value = mdp_reward_heading_independent.runPolicyEvaluation(initial_policy)
+    # compute the initial value
+    initial_value = mdp_problem.runPolicyEvaluation(initial_policy)
+    logger.info('Value of initial state for initial policy: %f' % initial_value[start_state])
 
-# simulate policy iteration
-grid_world.runSimulation(getNewState, initial_policy, initial_value, start_state, 'initial_policy')
-logger.info('Value of initial state for initial policy: %f' % initial_value[start_state])
+    if not heading_dependent:
+        raw_input('Press Enter to show the initial policy')
+        
+        # simulate initial policy
+        grid_world.runSimulation(getNewState, initial_policy, initial_value, start_state, 
+                'initial_policy' + str(head_string) + '_pe' + str(error_probability) + '_')
+    
 
-raw_input('Press Enter to show the Policy Iteration')
+    raw_input('Press Enter to show the Policy Iteration')
 
-# simulate policy iteration
-policy_iteration_policy, policy_iteration_value = mdp_reward_heading_independent.runPolicyIteration(initial_policy)
-grid_world.runSimulation(getNewState, policy_iteration_policy, policy_iteration_value, start_state, 'policy_iteration')
-logger.info('Value of initial state for initial policy: %f' % policy_iteration_value[start_state])
+    # simulate policy iteration
+    policy_iteration_policy, policy_iteration_value = mdp_problem.runPolicyIteration(initial_policy)
+    logger.info('Value of initial state for initial policy: %f' % policy_iteration_value[start_state])
+    grid_world.runSimulation(getNewState, policy_iteration_policy, policy_iteration_value, start_state, 
+            'policy_iteration' + str(head_string) + '_pe' + str(error_probability) + '_')
+    
 
-raw_input('Press Enter to show the Value Iteration')
+    raw_input('Press Enter to show the Value Iteration')
+    
+    # simulate the value iteration
+    value_iteration_policy, value_iteration_value = mdp_problem.runValueIteration(initial_policy)
+    logger.info('Value of initial state for initial policy: %f' % value_iteration_value[start_state])
+    grid_world.runSimulation(getNewState, value_iteration_policy, value_iteration_value, start_state, 
+            'value_iteration' + str(head_string) + '_pe' + str(error_probability) + '_')
+    
+    raw_input('Press Enter to continue')
 
-# simulate the value iteration
-value_iteration_policy, value_iteration_value = mdp_reward_heading_independent.runValueIteration(initial_policy)
-grid_world.runSimulation(getNewState, value_iteration_policy, value_iteration_value, start_state, 'value_iteration')
-logger.info('Value of initial state for initial policy: %f' % value_iteration_value[start_state])
-raw_input('Press Enter to continue')
 
-# change the reward function to require downward facing goal states and make a new mdp
-reward_function = lambda s: rewardFunctionHeadingDependent(reward_matrix, s)
-mdp_reward_heading_dependent = mdp(S, A, transition_probability_dict, reward_function, gamma)
 
-# create new possible goal states
-possible_goal_states = {state(GOAL_X, GOAL_Y, heading) for heading in down_heading_values}
+# discount factor
+gamma = 0.95
+# default settings
+runProblem(0,gamma,False)
 
-# define a new grid world
-grid_world = gridWorld(title, display_reward_matrix, possible_goal_states)
+# error probability = 0.25
+runProblem(0.25,gamma,False)
 
-# run the optimization algorithms
-policy_iteration_policy, policy_iteration_value = mdp_reward_heading_dependent.runPolicyIteration(initial_policy)
-value_iteration_policy, value_iteration_value = mdp_reward_heading_dependent.runValueIteration(initial_policy)
+# heading dependent
+runProblem(0,gamma,True)
 
-# map the mdp new state function to the simulation
-getNewState = lambda s, a: mdp_reward_heading_independent.getNewState(s,a)
+# heading dependent, error probability = 0.25
+runProblem(0.25,gamma,True)

@@ -51,7 +51,10 @@ class gridWorld(object):
         self.TRAJECTORY_END_COLOR = np.array([229, 9, 222])/255.0
 
         # constant for defining delay between frames
-        self.PAUSE_DELAY = 0.5
+        self.PAUSE_DELAY = 0.05
+
+        # determines cap on simulation states
+        self.MAX_STATE_NUMBER = 30
 
         # constants for defining heading arrow properties
         self.ARROW_LENGTH = 0.1
@@ -160,7 +163,7 @@ class gridWorld(object):
         self.value_line = None
         
         # reset internal variables
-        self.state_number = 0
+        self.state_number = -1
         self.trajectory_x = []
         self.trajectory_y = []
         self.trajectory = []
@@ -248,8 +251,8 @@ class gridWorld(object):
             self.value_line, = plt.plot(self.state_number, val, 'r')
         else:
             # update the line with new data and resize plot
-            self.value_line.set_data(np.arange(1,self.state_number+1),self.trajectory_values)
-            self.value_ax.set_xticks(np.arange(1,self.state_number+1), minor=False)
+            self.value_line.set_data(np.arange(self.state_number+1),self.trajectory_values)
+            self.value_ax.set_xticks(np.arange(self.state_number+1),minor=False)
             self.value_ax.relim()
             self.value_ax.autoscale_view()
             
@@ -285,7 +288,7 @@ class gridWorld(object):
 
         # run simulation while the current state is not the goal state
         # TODO: should there also be a condition for bad policies that will never find a way?
-        while not (current_state in self.possible_goal_states):
+        while not (current_state in self.possible_goal_states) and self.state_number < self.MAX_STATE_NUMBER:
             # get the current action and find a new state based on the system
             current_action = policy[current_state]
             new_state = getNewState(current_state, current_action)
@@ -322,7 +325,7 @@ class gridWorld(object):
         logger.debug('Plotting the trajectory in a gradient color')
 
         # total number of states in the trajectory is the current state number
-        num_trajectory_states = self.state_number
+        num_trajectory_states = len(self.trajectory)
 
         # linearly interpolate all color channels by the number of states
         red = np.linspace(self.TRAJECTORY_START_COLOR[0],self.TRAJECTORY_END_COLOR[0],num_trajectory_states);

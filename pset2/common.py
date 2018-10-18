@@ -72,7 +72,7 @@ class action(object):
 
 class mdp(object):
     '''General Markov Decision Process class'''
-    def __init__(self, S, A, transition_prob_dict, reward_function, gamma):
+    def __init__(self, S, A, transition_prob_dict, reward_function, gamma, possible_goal_states):
         '''Constructor
 
         Arguments:
@@ -90,7 +90,7 @@ class mdp(object):
         # maximum allowed policy optimization iterations
         # Note: this was placed to keep optimization processes finite. Remove or make larger
         # for larger systems
-        self.MAX_ITERATIONS = 1000
+        self.MAX_ITERATIONS = 300
 
         # tolerance for value differences. Needed to reduce optimization times
         self.V_TOLERANCE = 1e-3
@@ -101,6 +101,8 @@ class mdp(object):
         self.transition_prob_dict = transition_prob_dict
         self.reward_function = reward_function
         self.gamma = gamma
+
+        self.possible_goal_states = possible_goal_states
 
     def getTransitionProbability(self, s, a, s_p):
         '''Finds the probability for the system to transition from a state, s, to a new state,
@@ -187,7 +189,7 @@ class mdp(object):
                 possible_new_states = self.getPossibleNewStates(s,a)
 
                 # prevent infinite sum of rewards to accumulate
-                if a.movement is not 'stay':
+                if s not in self.possible_goal_states:
                     # calculate a new value 
                     v_sum = 0
                     for s_p in possible_new_states:
@@ -285,7 +287,7 @@ class mdp(object):
                 V[s], policy[s] = self.maximizeFunctionOverActions(f, s)
 
                 # prevent staying at reward to accumulate infinitely
-                if policy[s].movement is 'stay':
+                if s in self.possible_goal_states:
                     V[s] = self.getReward(s)
 
                 # check if the values have changed
