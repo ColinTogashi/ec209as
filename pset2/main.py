@@ -157,7 +157,7 @@ def createTransitionProbabilityTable(S,A,error_probability):
             # if a robot stays, it will always end up in the same state
             if a.movement == 'stay':    
                 s_p = s
-                transition_probabilty_dict[(s,a)][s_p] = 1
+                transition_probability_dict[(s,a)][s_p] = 1
 
             # if a robot moves, it can pre-rotate before undertaking an action
             elif a.movement == 'forwards' or a.movement == 'backwards':
@@ -313,23 +313,30 @@ reward_function = lambda s: rewardFunctionNonHeadingDependent(reward_matrix, s)
 # make a new mdp
 mdp_reward_heading_independent = mdp(S, A, transition_probability_dict, reward_function, gamma)
 
-# run the optimization algorithms
-policy_iteration_policy, policy_iteration_value = mdp_reward_heading_independent.runPolicyIteration(initial_policy)
-value_iteration_policy, value_iteration_value = mdp_reward_heading_independent.runValueIteration(initial_policy)
-
 # map the mdp new state function to the simulation
 getNewState = lambda s, a: mdp_reward_heading_independent.getNewState(s,a)
+
+raw_input('Press Enter to show the initial policy')
+
+initial_value = mdp_reward_heading_independent.runPolicyEvaluation(initial_policy)
+
+# simulate policy iteration
+grid_world.runSimulation(getNewState, initial_policy, initial_value, start_state, 'initial_policy')
+logger.info('Value of initial state for initial policy: %f' % initial_value[start_state])
 
 raw_input('Press Enter to show the Policy Iteration')
 
 # simulate policy iteration
+policy_iteration_policy, policy_iteration_value = mdp_reward_heading_independent.runPolicyIteration(initial_policy)
 grid_world.runSimulation(getNewState, policy_iteration_policy, policy_iteration_value, start_state, 'policy_iteration')
+logger.info('Value of initial state for initial policy: %f' % policy_iteration_value[start_state])
 
 raw_input('Press Enter to show the Value Iteration')
 
 # simulate the value iteration
+value_iteration_policy, value_iteration_value = mdp_reward_heading_independent.runValueIteration(initial_policy)
 grid_world.runSimulation(getNewState, value_iteration_policy, value_iteration_value, start_state, 'value_iteration')
-
+logger.info('Value of initial state for initial policy: %f' % value_iteration_value[start_state])
 raw_input('Press Enter to continue')
 
 # change the reward function to require downward facing goal states and make a new mdp
@@ -341,3 +348,10 @@ possible_goal_states = {state(GOAL_X, GOAL_Y, heading) for heading in down_headi
 
 # define a new grid world
 grid_world = gridWorld(title, display_reward_matrix, possible_goal_states)
+
+# run the optimization algorithms
+policy_iteration_policy, policy_iteration_value = mdp_reward_heading_dependent.runPolicyIteration(initial_policy)
+value_iteration_policy, value_iteration_value = mdp_reward_heading_dependent.runValueIteration(initial_policy)
+
+# map the mdp new state function to the simulation
+getNewState = lambda s, a: mdp_reward_heading_independent.getNewState(s,a)

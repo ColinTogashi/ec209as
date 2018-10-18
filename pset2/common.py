@@ -186,11 +186,15 @@ class mdp(object):
                 a = policy[s]
                 possible_new_states = self.getPossibleNewStates(s,a)
 
-                # calculate a new value 
-                v_sum = 0
-                for s_p in possible_new_states:
-                    v_sum = v_sum + self.getTransitionProbability(s, a, s_p)*(self.getReward(s) + self.gamma*V_old[s_p])
-                
+                # prevent infinite sum of rewards to accumulate
+                if a.movement is not 'stay':
+                    # calculate a new value 
+                    v_sum = 0
+                    for s_p in possible_new_states:
+                        v_sum = v_sum + self.getTransitionProbability(s, a, s_p)*(self.getReward(s) + self.gamma*V_old[s_p])
+                else:
+                    v_sum = self.getReward(s)
+
                 # check if the value was large enough from the current value
                 if np.abs(V[s] - v_sum) > self.V_TOLERANCE:
                     value_changed = True
@@ -279,6 +283,10 @@ class mdp(object):
             # run through the state space and find the optimal action that maximizes the value
             for s in self.S:
                 V[s], policy[s] = self.maximizeFunctionOverActions(f, s)
+
+                # prevent staying at reward to accumulate infinitely
+                if policy[s].movement is 'stay':
+                    V[s] = self.getReward(s)
 
                 # check if the values have changed
                 if np.abs(V[s] - V_old[s]) > self.V_TOLERANCE:

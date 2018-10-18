@@ -281,7 +281,7 @@ class gridWorld(object):
         self.updateValue(current_value)
         if image_base_name is not None:
             image_name = image_base_name + 'Start'
-            self.saveFigure(image_name, image_format)
+            self.saveFigure(self.fig, image_name, image_format)
 
         # run simulation while the current state is not the goal state
         # TODO: should there also be a condition for bad policies that will never find a way?
