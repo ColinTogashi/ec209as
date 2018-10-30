@@ -27,8 +27,8 @@ GOAL_Y = 4
 
 # define the start position
 START_X = 1
-START_Y = 4
-START_HEAD = 6
+START_Y = 2
+START_HEAD = 8
 
 # create constant rewards matrix based on problem
 # matrix organized relative to coordinate system
@@ -48,9 +48,9 @@ def createRewardMatrix(L, W, num_headings):
     reward_matrix[:,-1,:] = -100
     reward_matrix[0,:,:] = -100
     reward_matrix[-1,:,:] = -100
-    reward_matrix[2,2:5,:] = -6
-    reward_matrix[4,2:5,:] = -6
-    reward_matrix[3,4,5:8] = 25
+    reward_matrix[2,2:5,:] = -10
+    reward_matrix[4,2:5,:] = -10
+    reward_matrix[3,4,5:8] = 1
 
     # reward_matrix[3,4,0:2] = 1
     # reward_matrix[3,4,-1] = 1
@@ -357,7 +357,7 @@ def runProblem(error_probability, gamma, heading_dependent):
 
 
 # discount factor
-gamma = 0.95
+gamma = 0.9
 # default settings
 runProblem(0,gamma,False)
 
