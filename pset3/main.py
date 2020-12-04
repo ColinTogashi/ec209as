@@ -8,8 +8,8 @@ setupLogging()
 logger = logging.getLogger(__name__)
 logger.debug('Starting Main Program')
 
-wheel_radius = 0.02 # [m]
-wheel_separation_distance = 0.085 # [m]
+WHEEL_RADIUS = 0.02 # [m]
+WHEEL_SEPARATION_DISTANCE = 0.085 # [m]
 
 L = 0.75 # [m]
 W = 0.5 # [m]
@@ -17,8 +17,8 @@ W = 0.5 # [m]
 def convertDecoupledInputsToCoupledInputs(ut):
 
     # Note: defined first input is left motor, second is right
-    wt = (ut[1]-ut[0])/2.0
-    vt = (ut[0]+ut[1])/2.0
+    wt = WHEEL_RADIUS*(ut[1]-ut[0])/(2.0*WHEEL_SEPARATION_DISTANCE)
+    vt = WHEEL_RADIUS*(ut[0]+ut[1])/2.0
     return wt, vt 
 
 def nonlinearDynamics(st,u,dt):
@@ -35,6 +35,10 @@ def nonlinearDynamics(st,u,dt):
 
     st_plus_1 = [thetat_plus_1, xt_plus_1, yt_plus_1]
     return st_plus_1
+
+
+# need to use takeMeasurement for true state to find distance
+# also need to use takeMeasurement for to estimate landmark position based on state for Ht
 
 def takeMeasurement(st):
 
@@ -149,24 +153,39 @@ class extendedKalmanFilter(object):
 
 def Ft_function(st, ut, dt):
     wt, vt = convertDecoupledInputsToCoupledInputs(ut)
-    Ft = np.array([[                   1, 0, 0],
-                   [-vt*np.sin(st[0])*dt, 1, 0],
-                   [ vt*np.cos(st[0])*dt, 0, 1]])
+    Ft = np.array([[                   1, 0, 0, 0],
+                   [-vt*np.sin(st[0])*dt, 1, 0, 0],
+                   [ vt*np.cos(st[0])*dt, 0, 1, 0],
+                   [                   0, 0, 0, 1]])
     return Ft
 
-def Wt_function(st, dt)
+def Wt_function(st, dt):
     Wt = np.array([[dt,                0],
                    [ 0, np.cos(st[0])*dt],
-                   [ 0, np.sin(st[0])*dt]])
+                   [ 0, np.sin(st[0])*dt],
+                   [ 1,                0]])
     return Wt
 
 # TODO: need to see how to implement landmark positions?
-def Ht_function(st, dt, x_list, y_list):
-    dx = st[1]-x_l
-    dy = st[2]-y_l
-    d = np.sqrt(dx**2+dy**2)
-    Ht = np.array([[    dx/d,     dy/d,  0],
-                   [-dy/d**2, dx/dt**2, -1]])
+def Ht_function(st):
+    Ht = zeros(6,4)
+    st90 = st + np.array([-np.pi/2, 0, 0, 0])
+    _, xy = takeMeasurement(st)
+    xy_list.append(xy)
+    _, xy = takeMeasurement(st90)
+    xy_list.append(xy)
+
+    for k in range(xy_list):
+        dx = st[1]-x_list[k][0]
+        dy = st[2]-y_list[k][1]
+        d = np.sqrt(dx**2+dy**2)
+        Ht[2*k:2*k+2,:] = np.array([[    dx/d,    dy/d,  0, 0],
+                                    [-dy/d**2, dx/d**2, -1, 0]])
+
+    Ht[5,:] = np.array([1, 0, 0, 0])
+    Ht[6,:] = np.array([0, 0, 0, 1])
+
+    return Ht
 
 
 
@@ -179,3 +198,9 @@ if __name__ == '__main__':
     print(takeMeasurement(st))
     st = np.array([np.pi*3/2, .200, .400])
     print(takeMeasurement(st))
+
+dt = 0.001
+t0 = 0
+tf = 10
+n_times = np.int(np.ceil((tf-t0)/dt))+1
+u = np.ones((2, n_times))
